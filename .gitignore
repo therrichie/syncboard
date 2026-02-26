@@ -1,0 +1,22 @@
+Python (Backend)
+
+pycache/
+*.py[cod]
+*$py.class
+venv/
+.env
+syncboard.db
+.pytest_cache/
+
+Node.js (Frontend)
+
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+IDE (VS Code)
+
+.vscode/
+.DS_Store
+Thumbs.db
