@@ -1,15 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
-import { useNavigate } from 'react-router-dom'; // Ezt beimportáltuk a navigációhoz
+import { useNavigate } from 'react-router-dom';
+import { 
+  Plus, Trash2, LogOut, Layout, Clock, User 
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function Dashboard() {
   const [boards, setBoards] = useState([]);
   const [newBoardTitle, setNewBoardTitle] = useState('');
   const [newCardInputs, setNewCardInputs] = useState({});
-  const navigate = useNavigate(); // Navigációs hook inicializálása
+  const [activeBoardId, setActiveBoardId] = useState(null);
+  
+  // ÚJ: Állapot a bejelentkezett felhasználónak
+  const [currentUser, setCurrentUser] = useState(null); 
+  const navigate = useNavigate();
+
+  const activeBoard = boards.find(b => b.id === activeBoardId) || boards[0];
 
   useEffect(() => {
     fetchBoards();
+    fetchCurrentUser(); // ÚJ: Felhasználó lekérése indításkor
 
     const token = localStorage.getItem('token');
     const ws = new WebSocket(`ws://localhost:8000/ws/sync?token=${token}`);
@@ -21,27 +32,37 @@ export default function Dashboard() {
       }
     };
 
-    return () => {
-      ws.close();
-    };
+    return () => ws.close();
   }, []);
+
+  // --- ÚJ: Felhasználó lekérése az API-ból ---
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await api.get('/users/me');
+      setCurrentUser(response.data);
+    } catch (error) {
+      console.error("Hiba a felhasználó lekérésekor:", error);
+    }
+  };
 
   const fetchBoards = async () => {
     try {
       const response = await api.get('/boards/');
       setBoards(response.data);
+      if (!activeBoardId && response.data.length > 0) {
+        setActiveBoardId(response.data[0].id);
+      }
     } catch (error) {
       console.error("Hiba a táblák lekérésekor:", error);
     }
   };
 
-  // --- KIJELENTKEZÉS ---
+  // --- TÁBLA MŰVELETEK ---
   const handleLogout = () => {
-    localStorage.removeItem('token'); // Töröljük a tokent
-    navigate('/login'); // Visszadobjuk a bejelentkezéshez
+    localStorage.removeItem('token');
+    navigate('/login');
   };
 
-  // --- TÁBLA MŰVELETEK ---
   const handleCreateBoard = async (e) => {
     e.preventDefault();
     if (!newBoardTitle.trim()) return;
@@ -55,12 +76,36 @@ export default function Dashboard() {
   };
 
   const handleDeleteBoard = async (boardId) => {
-    if (!window.confirm("Biztosan törlöd ezt a táblát az összes kártyájával együtt?")) return;
+    if (!window.confirm("Biztosan törlöd ezt a táblát?")) return;
     try {
       await api.delete(`/boards/${boardId}`);
+      if (activeBoardId === boardId) setActiveBoardId(null);
       fetchBoards();
     } catch (error) {
       console.error("Hiba a tábla törlésekor:", error);
+    }
+  };
+
+  // --- OSZLOP MŰVELETEK ---
+  const handleCreateColumn = async () => {
+    const title = window.prompt("Új oszlop neve:");
+    if (!title || !title.trim()) return;
+    
+    try {
+      await api.post('/columns/', { title: title, board_id: activeBoard.id });
+      fetchBoards();
+    } catch (error) {
+      console.error("Hiba az oszlop létrehozásakor:", error);
+    }
+  };
+
+  const handleDeleteColumn = async (columnId) => {
+    if (!window.confirm("Biztosan törlöd ezt az oszlopot az összes kártyájával együtt?")) return;
+    try {
+      await api.delete(`/columns/${columnId}`);
+      fetchBoards();
+    } catch (error) {
+      console.error("Hiba az oszlop törlésekor:", error);
     }
   };
 
@@ -88,9 +133,10 @@ export default function Dashboard() {
     }
   };
 
-  // --- DRAG AND DROP LOGIKA ---
-  const onDragStart = (e, cardId) => {
+  // --- DRAG AND DROP ---
+  const onDragStart = (e, cardId, sourceColumnId) => {
     e.dataTransfer.setData('cardId', cardId);
+    e.dataTransfer.setData('sourceColumnId', sourceColumnId);
   };
 
   const onDragOver = (e) => {
@@ -99,7 +145,9 @@ export default function Dashboard() {
 
   const onDrop = async (e, targetColumnId) => {
     const cardId = e.dataTransfer.getData('cardId');
-    if (!cardId) return;
+    const sourceColumnId = e.dataTransfer.getData('sourceColumnId');
+    
+    if (!cardId || sourceColumnId === targetColumnId) return;
 
     try {
       await api.put(`/cards/${cardId}`, { column_id: targetColumnId });
@@ -110,103 +158,197 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-gray-100">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Tábláim</h1>
-        
-        {/* Felső vezérlőpult a gombokkal */}
-        <div className="flex items-center gap-4">
-          <form onSubmit={handleCreateBoard} className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Új tábla neve..."
-              className="p-2 border rounded shadow-sm outline-none focus:ring-2 focus:ring-blue-400"
-              value={newBoardTitle}
-              onChange={(e) => setNewBoardTitle(e.target.value)}
-            />
-            <button type="submit" className="px-4 py-2 font-bold text-white bg-blue-500 rounded hover:bg-blue-600">
-              + Új Tábla
-            </button>
-          </form>
-          
-          {/* Új Kijelentkezés gomb */}
-          <button 
-            onClick={handleLogout} 
-            className="px-4 py-2 font-bold text-gray-700 transition-colors bg-gray-300 rounded hover:bg-red-500 hover:text-white"
-          >
-            Kijelentkezés
-          </button>
+    <div className="flex h-screen bg-[#F8FAFC]">
+      {/* Sidebar */}
+      <aside className="flex flex-col shrink-0 w-64 bg-white border-r border-slate-200">
+        <div className="flex items-center gap-3 p-6">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-indigo-600">
+            <Layout className="w-5 h-5 text-white" />
+          </div>
+          <span className="text-xl font-bold tracking-tight text-slate-800">SyncBoard</span>
         </div>
-      </div>
 
-      <div className="flex gap-6 pb-4 overflow-x-auto">
-        {boards.length === 0 ? (
-          <p className="italic text-gray-500">Még nincsenek tábláid. Hozz létre egyet fent!</p>
-        ) : (
-          boards.map(board => (
-            <div key={board.id} className="min-w-[320px] p-4 bg-gray-200 rounded-lg shadow-md shrink-0 relative flex flex-col">
+        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
+          <div className="px-2 mb-2 text-xs font-semibold tracking-wider uppercase text-slate-400">Tábláim</div>
+          
+          {boards.length === 0 && <div className="px-2 text-sm text-gray-400">Nincs még táblád.</div>}
+          
+          {boards.map(board => (
+            <button
+              key={board.id}
+              onClick={() => setActiveBoardId(board.id)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-md transition-all group ${
+                activeBoard?.id === board.id 
+                  ? 'bg-indigo-50 text-indigo-700 font-medium' 
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <span className="truncate">{board.title}</span>
               <button 
-                onClick={() => handleDeleteBoard(board.id)}
-                className="absolute text-red-500 top-4 right-4 hover:text-red-700"
-                title="Tábla törlése"
+                onClick={(e) => { e.stopPropagation(); handleDeleteBoard(board.id); }}
+                className="p-1 transition-opacity opacity-0 group-hover:opacity-100 hover:text-red-500"
               >
-                ✖
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
-              <h2 className="mb-4 text-xl font-bold text-gray-700">{board.title}</h2>
-              
-              <div className="flex flex-col flex-1 gap-4">
-                {board.columns?.map(col => (
-                  <div 
-                    key={col.id} 
-                    className="flex flex-col flex-1 p-3 bg-white rounded shadow-sm"
-                    onDragOver={onDragOver}
-                    onDrop={(e) => onDrop(e, col.id)}
-                  >
-                    <h3 className="pb-1 mb-2 font-semibold text-gray-600 border-b">{col.title}</h3>
-                    
-                    <div className="flex flex-col flex-1 gap-2 min-h-[50px]">
-                      {col.cards?.map(card => (
-                        <div 
-                          key={card.id} 
-                          draggable 
-                          onDragStart={(e) => onDragStart(e, card.id)}
-                          className="relative p-2 text-sm bg-yellow-100 border border-yellow-300 rounded shadow-sm cursor-grab active:cursor-grabbing hover:bg-yellow-200 group"
-                        >
-                          {card.title}
-                          <button 
-                            onClick={() => handleDeleteCard(card.id)}
-                            className="absolute hidden text-red-500 right-2 top-2 group-hover:block hover:text-red-700"
-                            title="Kártya törlése"
-                          >
-                            ✖
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+            </button>
+          ))}
+          
+          <form onSubmit={handleCreateBoard} className="px-2 mt-4">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Új tábla..."
+                className="w-full py-2 pl-3 pr-8 text-sm transition-all border rounded-md border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                value={newBoardTitle}
+                onChange={(e) => setNewBoardTitle(e.target.value)}
+              />
+              <button type="submit" className="absolute text-slate-400 right-2 top-1/2 -translate-y-1/2 hover:text-indigo-600">
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </form>
+        </nav>
 
-                    <div className="flex gap-1 mt-3">
-                      <input 
-                        type="text" 
-                        placeholder="Új feladat..." 
-                        className="w-full p-1 text-sm border rounded outline-none focus:ring-1 focus:ring-blue-400"
-                        value={newCardInputs[col.id] || ''}
-                        onChange={(e) => setNewCardInputs({ ...newCardInputs, [col.id]: e.target.value })}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCreateCard(col.id)}
-                      />
-                      <button 
-                        onClick={() => handleCreateCard(col.id)}
-                        className="px-2 text-white bg-green-500 rounded hover:bg-green-600"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))}
+        {/* ÚJ: Felhasználói profil és Kijelentkezés rész */}
+        <div className="p-4 border-t border-slate-100">
+          {currentUser && (
+            <div className="flex items-center gap-3 px-3 py-2 mb-3 rounded-md bg-slate-50">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 shrink-0">
+                <User className="w-4 h-4" />
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bejelentkezve</p>
+                <p className="text-sm font-medium truncate text-slate-700" title={currentUser.email}>
+                  {currentUser.email}
+                </p>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          )}
+
+          <button 
+            onClick={handleLogout}
+            className="flex items-center w-full gap-3 px-3 py-2 transition-all rounded-md text-slate-600 hover:text-red-600 hover:bg-red-50"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="text-sm font-medium">Kijelentkezés</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex flex-col flex-1 overflow-hidden">
+        {/* Header */}
+        <header className="flex items-center justify-between h-16 px-8 bg-white border-b shrink-0 border-slate-200">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold text-slate-800">
+              {activeBoard ? activeBoard.title : 'Válassz vagy hozz létre egy táblát'}
+            </h1>
+          </div>
+          
+          {activeBoard && (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded text-slate-500 bg-slate-100">
+                <Clock className="w-3 h-3" />
+                <span>Szinkronizálva</span>
+              </div>
+            </div>
+          )}
+        </header>
+
+        {/* Board Area */}
+        <div className="flex items-start flex-1 gap-6 p-8 overflow-x-auto">
+          <AnimatePresence mode="popLayout">
+            {activeBoard?.columns?.map(column => (
+              <motion.div 
+                key={column.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="flex flex-col shrink-0 w-80 max-h-full border rounded-xl bg-slate-100/50 border-slate-200/60"
+                onDragOver={onDragOver}
+                onDrop={(e) => onDrop(e, column.id)}
+              >
+                <div className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold tracking-wider uppercase text-slate-700">{column.title}</h3>
+                    <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                      {column.cards?.length || 0}
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => handleDeleteColumn(column.id)}
+                    className="text-slate-400 hover:text-red-500"
+                    title="Oszlop törlése"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 px-3 pb-3 space-y-3 overflow-y-auto min-h-[100px]">
+                  {column.cards?.map(card => (
+                    <motion.div
+                      key={card.id}
+                      layout
+                      draggable
+                      onDragStart={(e) => onDragStart(e, card.id, column.id)}
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: 0.98, cursor: 'grabbing' }}
+                      className="relative p-4 bg-white border rounded-lg shadow-sm cursor-grab group border-slate-200"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-tighter bg-amber-50 text-amber-600">
+                          Feladat
+                        </div>
+                        <button 
+                          onClick={() => handleDeleteCard(card.id)}
+                          className="transition-all opacity-0 text-slate-300 group-hover:opacity-100 hover:text-red-500"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      
+                      <p className="text-sm font-medium leading-relaxed text-slate-700">{card.title}</p>
+                      
+                      <div className="absolute left-0 w-1 h-8 transition-opacity opacity-0 top-1/2 -translate-y-1/2 bg-indigo-500 rounded-r-full group-hover:opacity-100" />
+                    </motion.div>
+                  ))}
+                </div>
+
+                <div className="p-3 mt-auto">
+                  <div className="relative group/input">
+                    <input
+                      type="text"
+                      placeholder="Új kártya..."
+                      className="w-full py-2 pl-3 pr-10 text-sm transition-all border border-transparent rounded-lg bg-white/50 focus:bg-white focus:border-indigo-500 focus:outline-none placeholder:text-slate-400"
+                      value={newCardInputs[column.id] || ''}
+                      onChange={(e) => setNewCardInputs({ ...newCardInputs, [column.id]: e.target.value })}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCreateCard(column.id)}
+                    />
+                    <button 
+                      onClick={() => handleCreateCard(column.id)}
+                      className="absolute p-1 transition-all rounded right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {activeBoard && (
+            <button 
+              onClick={handleCreateColumn}
+              className="flex items-center justify-center h-12 gap-2 transition-all border-2 border-dashed shrink-0 w-80 border-slate-200 rounded-xl text-slate-400 hover:border-indigo-300 hover:text-indigo-500 hover:bg-indigo-50/30 group"
+            >
+              <Plus className="w-5 h-5 transition-transform group-hover:scale-110" />
+              <span className="text-sm font-semibold">Új oszlop</span>
+            </button>
+          )}
+
+        </div>
+      </main>
     </div>
   );
 }
