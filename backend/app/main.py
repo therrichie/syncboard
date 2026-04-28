@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -8,6 +9,14 @@ from . import models, schemas, crud, auth, database
 models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI(title="SyncBoard API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"], # Engedélyezzük a React kliens címét
+    allow_credentials=True,
+    allow_methods=["*"], # Minden metódust (GET, POST, stb.) engedélyezünk
+    allow_headers=["*"], # Minden fejlécet engedélyezünk
+)
 
 @app.get("/")
 def read_root():
