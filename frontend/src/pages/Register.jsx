@@ -18,9 +18,8 @@ export default function Register() {
       });
       
       alert('Sikeres regisztráció! Most már bejelentkezhetsz.');
-      navigate('/login'); // Sikeres regisztráció után átirányítjuk a bejelentkezéshez
+      navigate('/login'); 
     } catch (error) {
-      // Ha a backend hibaüzenetet küld (pl. "Email already registered"), azt kiírjuk
       const errorMsg = error.response?.data?.detail || 'Hiba történt!';
       alert(`Regisztráció sikertelen: ${errorMsg}`);
       console.error(error);

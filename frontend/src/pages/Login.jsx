@@ -16,10 +16,9 @@ export default function Login() {
 
       const response = await api.post('/token', params);
       
-      // Token elmentése
       localStorage.setItem('token', response.data.access_token);
       alert('Sikeres bejelentkezés!');
-      navigate('/dashboard'); // Átirányítás a táblákhoz
+      navigate('/dashboard'); 
     } catch (error) {
       alert('Hibás email vagy jelszó!');
       console.error(error);

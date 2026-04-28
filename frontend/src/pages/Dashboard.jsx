@@ -12,7 +12,6 @@ export default function Dashboard() {
   const [newCardInputs, setNewCardInputs] = useState({});
   const [activeBoardId, setActiveBoardId] = useState(null);
   
-  // ÚJ: Állapot a bejelentkezett felhasználónak
   const [currentUser, setCurrentUser] = useState(null); 
   const navigate = useNavigate();
 
@@ -20,7 +19,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchBoards();
-    fetchCurrentUser(); // ÚJ: Felhasználó lekérése indításkor
+    fetchCurrentUser();
 
     const token = localStorage.getItem('token');
     const ws = new WebSocket(`ws://localhost:8000/ws/sync?token=${token}`);
@@ -35,7 +34,6 @@ export default function Dashboard() {
     return () => ws.close();
   }, []);
 
-  // --- ÚJ: Felhasználó lekérése az API-ból ---
   const fetchCurrentUser = async () => {
     try {
       const response = await api.get('/users/me');
@@ -57,7 +55,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- TÁBLA MŰVELETEK ---
   const handleLogout = () => {
     localStorage.removeItem('token');
     navigate('/login');
@@ -86,7 +83,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- OSZLOP MŰVELETEK ---
   const handleCreateColumn = async () => {
     const title = window.prompt("Új oszlop neve:");
     if (!title || !title.trim()) return;
@@ -109,7 +105,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- KÁRTYA MŰVELETEK ---
   const handleCreateCard = async (columnId) => {
     const title = newCardInputs[columnId];
     if (!title || !title.trim()) return;
@@ -133,7 +128,6 @@ export default function Dashboard() {
     }
   };
 
-  // --- DRAG AND DROP ---
   const onDragStart = (e, cardId, sourceColumnId) => {
     e.dataTransfer.setData('cardId', cardId);
     e.dataTransfer.setData('sourceColumnId', sourceColumnId);
@@ -209,7 +203,7 @@ export default function Dashboard() {
           </form>
         </nav>
 
-        {/* ÚJ: Felhasználói profil és Kijelentkezés rész */}
+        {/* Account and Logout */}
         <div className="p-4 border-t border-slate-100">
           {currentUser && (
             <div className="flex items-center gap-3 px-3 py-2 mb-3 rounded-md bg-slate-50">
